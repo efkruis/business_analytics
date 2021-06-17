@@ -1,0 +1,446 @@
+---
+title: "Midterm: Examing Gender Pay Gap with Bayesian Regression"
+author: "Emma Kruis"
+date: "2020-02-01"
+output:
+  pdf_document: default
+  word_document: default
+  html_notebook: default
+  html_document:
+    df_print: paged
+editor_options:
+  chunk_output_type: console
+---
+
+## Instructions
+
+This script reviews *Bayesian Regression Analysis* as part of the *Midterm Review*. 
+You will use content from the lecture and assignment materials on *Bayesian Regression Analysis* to complete this script.
+You will *copy and paste* relevant code from those files into this script and answer the associated questions for each task. 
+You will respond to questions in each section after executing relevant code to answer a question. 
+You will submit this script to its *Submissions* folder on *D2L* as part of the *Midterm Review*.
+For this script, you will submit *two* files:
+
+1. this completed *R Markdown* script, and 
+2. as a first preference, a *PDF* (if you already installed `TinyTeX` properly), as a second preference, a *Microsfot Word* (if your computer has *Microsoft Word*) document, or, as a third preference, an *HTML* (if you did *not* install `TinyTeX` properly and your computer does *not* have *Microsoft Word*) file to *D2L*.
+
+For the *Midterm Review*, create the project directory: *~/mgt_592/assignments/midterm_review*.
+Convert your project directory into a formal *R Project* directory by going to the *File* menu in *RStudio*, selecting *New Project...*, choosing *Existing Directory*, and going to your *~/mgt_592/assignments/midterm_review* folder to select it as the top-level directory for this **R Project**.  
+The project directory should contain the following folders: *scripts*, *data*, and *plots*.
+Store this script in the *scripts* folder and the relevant data in the *data* folder.
+
+## Global Settings
+
+The first code chunk sets the global settings for the remaining code chunks in the document.
+Do *not* change anything in this code chunk.
+
+```{r, setup, include = FALSE}
+### specify echo setting for all code chunks
+## call function
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Task 1: Load Libraries
+
+For this task, you will load the libraries you need for this script.
+
+### Task 1.1
+
+In this code chunk, load the following packages:
+
+1. **here**,
+2. **tidyverse**,
+3. **janitor**,
+4. **skimr**, 
+5. **ggthemes**,
+6. **rstanarm**,
+7. **bayesplot**, and
+8. **tidybayes**.
+
+Make sure you installed these packages before loading the libraries.
+
+You will use functions from these packages to complete this script. 
+
+```{r, task1_1}
+### load libraries for use in current working session
+## here for project work flow
+library(here)
+
+## tidyverse for data manipulation and plotting
+## loads eight different libraries simultaneously
+library(tidyverse)
+
+## janitor to clean data and chi-square test
+library(janitor)
+
+## skimr to summarize data
+library(skimr)
+
+## ggthemes for plot themes
+library(ggthemes)
+
+## rstanarm for Bayesian regression
+library(rstanarm)
+
+## bayesplot for Bayesian posterior distributions
+library(bayesplot)
+
+## tidybayes to work with Bayesian model results
+library(tidybayes)
+```
+
+## Task 2: Import Data
+
+For this task, you will import the data file: **gender_pay_gap.csv**.
+
+### Task 2.1
+
+Use the **read_csv()** and **here()** functions to load the data file for this working session. 
+Save the data as the object **org_raw**. 
+
+Make a copy of the data and name the copy: **org_work**.
+You will work with the *complete data*.
+Use the **glimpse()** function to view a preview of values for each variable in **org_work**. 
+
+```{r, task2_1}
+org_raw<- read_csv(
+  here("data", "gender_pay_gap.csv")
+)
+
+org_work <- org_raw 
+
+
+glimpse(org_work)
+```
+
+## Task 3: Clean and Prepare Data
+
+For this task, you will clean and prepare the data.
+
+### Task 3.1
+
+Perform the following cleaning tasks to update **org_work**: 
+
+1. mutate all character variables to factor variables, and
+2. use **clean_names()** to make variable names use all lowercase letters and connect multiple words with underscores.
+
+Use **glimpse()** to preview the updated **org_work** data object.
+
+```{r, task3_1}
+org_work <- org_work %>%
+  mutate(
+    across(
+      .cols = where(is.character),
+      .fns = as_factor
+    )
+  ) %>%
+  clean_names()
+
+glimpse(org_work)
+```
+
+## Task 4: Examine Data
+
+For this task, you will examine the data.
+
+### Task 4.1
+
+Create a plot using **ggplot()** to highlight the differences in *base pay* between *men* and *women* for different *departments*.
+
+Do the following:
+
+1. call **ggplot()**, set the data to **org_work**, map **gender** to the *x-axis* and the **fill**, and map **base_pay** to the *y-axis*;
+2. call **geom_boxplot()** and set the outlier **color** to **purple** and **size** to **1.5**;
+3. call **geom_point()** and set **alpha** to **0.15**;
+4. call **facet_wrap()** to facet by **dept** with **2** rows;
+5. call **scale_y_continuous** and set the number of breaks to **8** and the **labels** to *dollar format*;
+6. label the axes and legend appropriately with **labs()**;
+7. use **theme_fivethirtyeight()** as the *theme*.
+
+**Questions 4.1**: Answer these questions:
+(1) For which combinations of *department* and *gender* are there outliers?
+(2) Is the *median total pay* higher for *women* in any of the *department* groups?
+
+**Responses 4.1**: *(1) management and sales (2) No *.
+
+```{r, task4_1}
+ggplot(
+  org_work,
+  aes(x =gender, y = base_pay, fill = gender)
+) +
+  geom_boxplot(outlier.color = "purple", outlier.size = 1.5) +
+  geom_point(alpha = 0.15) +
+  facet_wrap(
+    vars(dept),
+    nrow = 2,
+    labeller = as_labeller(
+      setNames(
+      paste("Department", levels(org_work$dept), sep = ": "),
+      levels(org_work$dept)
+      )
+    )
+  )+
+  scale_y_continuous(n.breaks = 8, labels = scales::dollar_format()) + 
+  labs(x = "Gender", Y = "Base Pay", fill= "Gender") +
+  theme_fivethirtyeight()
+```
+
+## Task 5: Fit Moderated Bayesian Regression Model
+
+Estimate a simple Bayesian regression model using using **org_work** where observed values of *base pay* are predicted from observed values of *gender* and *department*.
+
+### Task 5.1
+
+Create a model object named **mod_1** using **stan_glm()**.
+Inside of **stan_glm()**, do the following:
+
+1. specify the *formula* to indicate **base_pay** predicted by **gender**, **dept**, and their interaction,
+2. specify the *data* as **org_work**,
+3. set the *prior intercept* to a **normal** distribution with **location** equal to **8e4** and **autoscale** equal to **TRUE**,
+4. set the *prior of the regression coefficients for the predictors* to a **normal** distribution with **location** equal to **0** and **autoscale** equal to **TRUE**,
+5. set the *error prior* to be an **exponential** distribution with **rate** equal to **0.7** and **autoscale** equal to **TRUE**, and
+6. set the **seed** to **1805** (birth year of *William Rowan Hamilton*).
+
+After creating the model, then do the following:
+
+1. apply **summary()** to **mod_1** using *three digits* and **seq(0.1, 0.9, 0.2)** for the *percentiles* to examine the posterior parameter distributions,
+2. apply **coef()** to **mod_1** to extract the *median* regression coefficients, and
+3. apply **posterior_interval** to **mod_1** and set the *credible interval* to **0.89**.
+
+**Questions 5.1**: Answer these questions:
+(1) What is the *90th percentile* of the **genderMale:deptAdministration** regression coefficient?
+(2) What is the estimated *median difference in base pay* between *men* and *women* in the *operations* department (i.e., look at the **genderMale** regression coefficient)?
+(3) What is the *89% credible interval* for the difference in pay for *women* in the *management department* versus the *operations department* (i.e., look at the **deptManagement** row)?
+(4) What is the *89% credible interval* for the difference in pay for *men* versus *women* in the *management department* (i.e., look at the **genderMale:deptManagement** row)?
+
+**Responses 5.1**: *(1) 10618.898 (2) 8537.523 (3) 91825.96 (4) 11116.88*.
+
+```{r, task5_1}
+##model creation
+mod_1 <- stan_glm(
+  base_pay ~ gender,
+  data = org_work,
+  prior_intercept = normal(location= 8e+04, autoscale = TRUE),
+  prior = normal(location = 0, autoscale = TRUE),
+  prior_aux = exponential(rate = 0.7, autoscale = TRUE),
+  seed = 1805
+)
+
+
+##model summary
+summary(mod_1, digits = 3, probs = seq(0.1, 0.9,0.2))
+
+
+##extracting coefficients
+coef(mod_1)
+
+##examine credible intervals
+posterior_interval(mod_1, prob = 0.89)
+
+
+```
+
+### Task 5.2
+
+Examine **mod_1** by doing the following:
+
+1. compute the *Bayesian R-squared* using **bayes_R2()** and saving the results to an object named **mod_1_r_sq**;
+2. apply **summary()** to **mod_1_r_sq**;
+3. apply **pp_check()** and examine the *density overlay*, the *mean* on its own, and the *mean* and *sd* together;
+4. compute the *fitted values* using the *median posterior regression parameters* and save the calculation as a new variable named **mod_1_fitted** to **org_work**;
+5. open the *spreadsheet view* of **org_work** to answer a question about **mod_1_fitted** values.
+
+**Questions 5.2**: Answer these questions:
+(1) What is the *median R-squared* value?
+(2) Do the *posterior predictive checks* indicate any estimation issues?
+(3) Use the *spreadsheet view* of **org_work** to answer: what is the *median posterior fitted value* for a *female* employee working in the *engineering* department?
+(4) Use the *spreadsheet view* of **org_work** to answer: what is the *median posterior fitted value* for a *male* employee working in the *engineering* department?
+
+**Responses 5.2**: *(1) 0.028287 (2) No estimation issues (3) 89916.70 (4) 98454.23*.
+
+```{r, task5_2}
+mod_1_r_sq <- bayes_R2(mod_1)
+
+summary(mod_1_r_sq)
+
+##posterior predictive checks
+#density overlay
+pp_check(mod_1, "dens_overlay")
+
+#mean
+pp_check(mod_1, plotfun = "stat", stat= "mean")
+
+
+#mean and sd
+pp_check(mod_1, plotfun = "stat_2d", stat = c("mean", "sd"))
+
+##median posterior fitted values
+org_work <- org_work %>%
+  mutate(mod_1_fitted = fitted(mod_1))
+
+mod_1_fitted <- as_tibble(mod_1)
+
+
+mod_1_fitted
+```
+
+### Task 5.3
+
+Extract the draws from the posterior regression parameter distributions from **mod_1** with **as_tibble()** and save them as **mod_1post**.
+Create a plot using **mcmc_areas()**.
+Do the following to create the plot:
+
+1. call **mcmc_areas()** and set data to **mod_1_post**, select the **`genderMale:deptSales`** (note the back ticks) parameter, and set the interval to **0.89**;
+3. call **ggtitle()** and set the *title* of the plot to **Posterior Distribution for Gender Difference in Base Pay in Sales Department**.
+
+**Question 5.3**: What can you say about the *gender difference in base pay in the sales department*?
+
+**Response 5.3**: *This confirms that there is a gender pay gap even at the 100th percentile. *.
+
+```{r, task5_3}
+mod_1_post <- as_tibble(mod_1)
+
+mod_1_post
+
+#posterior parmeter distributions
+mcmc_areas(
+  mod_1_post,
+  pars = vars(genderMale),
+  prob = 0.89
+)+
+  
+  ggtitle("Posterior Distribution for Gender Difference in Base Pay in Sales Department")
+```
+
+### Task 5.4
+
+Calculate the *fitted* and *predicted* values from the *posterior draws* of the regression parameters where you set **gender** equal to **levels(org_work$gender)** (i.e., **gender = levels(org_work$gender)**) and **dept** equal to **levels(org_work$dept)** (i.e., **dept = levels(org_work$gender)**) inside of **crossing()**.
+Pass the **crossing()** result to **add_fitted_draws()** and **add_predicted_draws()** while including **mod_1** as an input as well for the *fitted* and *predicted* values saving the results as **mod_1_post_fit** and **mod_1_post_pred**, respectively.
+
+Create a plot named **mod_1_plot** using **ggplot()**.
+To create the plot, do the following:
+
+1. inside of **ggplot()**, set data to **org_work**, **gender** to the *x-axis*, and **base_pay** to the *y-axis*;
+2. add a first **geom_jitter()** layer with **height** and **width** set to **0.05** and **alpha** set to **0.5**.
+3. add a second **geom_jitter()** layer with **height** and **width** set to **0.05**, set data to **mod_1_post_pred**, map **gender** to the *x-axis* and **.prediction** to the *y-axis*, set **color** to **lightgreen**, set **size** to **0.5**, and set **alpha** to **0.15**;
+4. add a third **geom_jitter()** layer with **height** and **width** set to **0.05**, set data to **mod_1_post_fit**, map **gender** to the *x-axis* and **.value** to the *y-axis*, set **color** to **skyblue**, set **size** to **1.5**, and set **alpha** to **0.15**;
+5. add a **geom_point()** layer and map **mod_1_fitted** to the *y-axis*, set **color** to **red**, and set **size** to **2**;
+6. add **facet_wrap()** to facet by **dept** across **2** rows;
+7. call **scale_y_continuous** and set the number of breaks to **10** and the **labels** to *dollar format*;
+8. label the x-axis **Gender** and the y-axis **Base Pay**;
+9. use **theme_hc()**.
+
+Display **mod_1_plot** by typing its name.
+
+**Questions 5.4**: Answer these questions:
+(1) Do *men* outearn *women* irrespective of *department*?
+(2) Is there much of an *interaction effect* between *gender* and *department*? (Hint: you can also examine the *89% credible intervals* for the interaction regression coefficients to answer this question.)
+
+**Responses 5.4**: *(1) Yes (2) Yes *.
+
+```{r, task5_4}
+mod_1_post_fit <- crossing(
+  gender = levels(org_work$gender),
+  dept = levels(org_work$gender)
+  ) %>%
+  add_fitted_draws(mod_1)
+
+
+mod_1_post_pred <- crossing(
+  gender = levels(org_work$gender),
+   age = levels(org_work$gender)
+  ) %>%
+  add_predicted_draws(mod_1)
+
+
+
+mod_1_plot <- ggplot(
+  # data
+  org_work,
+  # mapping
+  aes(x = gender, y = base_pay)
+  ) +
+  ## jitter observed data points
+  geom_jitter(height = 0.05, width = 0.05, alpha = 0.5) +
+  ## add posterior predicted values
+  geom_jitter(
+    # adjust height, width
+    height = 0.05, width = 0.05, 
+    # data
+    data = mod_1_post_pred,
+    # mapping
+    mapping = aes(x = gender, y = .prediction),
+    # color, size, alpha 
+    color = "lightgreen", size = 0.5, alpha = 0.15
+  ) +
+  ## add posterior fitted values
+  geom_jitter(
+    # adjust height, width
+    height = 0.05, width = 0.05, 
+    # data
+    data = mod_1_post_fit,
+    # mapping
+    mapping = aes(x = gender, y = .value),
+    # color, size, alpha 
+    color = "skyblue", size = 1.5, alpha = 0.15
+  ) +
+  ## add median posterior fitted values
+  geom_point(
+    # map fitted values
+    aes(y = mod_1_fitted),
+    # color, size
+    color = "red", size = 2
+  ) +
+   facet_wrap(
+    # facet by variable, 
+    vars(dept), 
+    # display across rows
+    nrow = 2, 
+    # labels
+    labeller = as_labeller(
+      # look-up table
+      setNames(
+        # vector elements
+        paste("Department", 1:5, sep = ": "), 
+        # names of elements
+        1:5
+      )
+    ) 
+  ) +
+  ## scale y-axis
+  scale_y_continuous(n.breaks = 10, labels = scales::dollar_format()) +
+  ## labels
+  labs(x = "Gender", y = "Base Pay") +
+  #define theme
+  theme_hc()
+
+## display plot
+mod_1_plot
+```
+
+## Task 6: Save Object
+
+For this task, you will save a plot.
+
+### Task 6.1
+
+Save **mod_1_plot** as **bayes_reg.png** in the **plots** folder of the project directory using **ggsave()**.
+Use a width of *9 inches* and height of *6 inches* for all plots.
+
+```{r, task6_1}
+#mod_1_plot
+ggsave(
+  here("plots", "bayes_reg.png"),
+  plot = mod_1_plot,
+  units = "in", width = 9, height = 6
+)
+
+```
+
+## Task 7: Conceptual Question
+
+For your last task, you will respond to a conceptual question.
+
+**Question 7.1**: What is the difference between the *fitted* and *predicted* values produced by **add_fitted_draws()** and **add_predicted_draws()**, respectively?
+
+**Response 7.1**: *Fitted values adds draws from posterior liner PREDICTORS to the data. Predicted values adds draws from posterior PREDICTIONS to the data. . *.

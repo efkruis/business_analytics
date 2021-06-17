@@ -1,0 +1,1903 @@
+---
+title: "Assignment: Examining Employee Organizational Reviews with Text Analytics"
+author: "Emma Kruis"
+date: "2020-01-25"
+output:
+  pdf_document: default
+  word_document: default
+  html_notebook: default
+  html_document:
+    df_print: paged
+editor_options:
+  chunk_output_type: console
+---
+
+## Instructions
+
+This assignment reviews the *Text Analytics* content. 
+You will use the *text_analytics.Rmd* file I reviewed as part of the lectures for this week to complete this assignment. 
+You will *copy and paste* relevant code from that file and update it to answer the questions in this assignment. 
+You will respond to questions in each section after executing relevant code to answer a question. 
+You will submit this assignment to its *Submissions* folder on *D2L*.
+You will submit *two* files:
+
+1. this completed *R Markdown* script, and 
+2. as a first preference, a *PDF* (if you already installed `TinyTeX` properly), as a second preference, a *Microsfot Word* (if your computer has *Microsoft Word*) document, or, as a third preference, an *HTML* (if you did *not* install `TinyTeX` properly and your computer does *not* have *Microsoft Word*) file to *D2L*.
+
+To start:
+
+First, create a folder on your computer to save all relevant files for this course. 
+If you did not do so already, you will want to create a folder named *mgt_592* that contains all of the materials for this course.
+
+Second, inside of *mgt_592*, you will create a folder to host assignments.
+You can name that folder *assignments*.
+
+Third, inside of *assignments*, you will create folders for each assignment.
+You can name the folder for this first assignment: *text_analytics*.
+
+Fourth, create three additional folders in *text_analytics* named *scripts*, *data*, and *plots*.
+Store this script in the *scripts* folder and the data for this assignment in the *data* folder.
+
+Fifth, go to the *File* menu in *RStudio*, select *New Project...*, choose *Existing Directory*, go to your *~/mgt_592/assignments/text_analytics* folder to select it as the top-level directory for this **R Project**.  
+
+## Global Settings
+
+The first code chunk sets the global settings for the remaining code chunks in the document.
+Do *not* change anything in this code chunk.
+
+```{r, setup, include = FALSE}
+### specify echo setting for all code chunks
+## call function
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Load Packages
+
+In this code chunk, we load the following packages:
+
+1. **here**,
+2. **tidyverse**,
+3. **tidygraph**,
+4. **ggraph**,
+5. **tidytext**,
+6. **ggwordcloud**, 
+7. **widyr**, and
+8. **topicmodels**.
+
+Make sure you installed these packages when you reviewed the analytical lecture.
+
+We will use functions from these packages to examine the data. 
+Do *not* change anything in this code chunk.
+
+```{r, libraries, message = FALSE}
+### load libraries for use in current working session
+## here for project work flow
+library(here)
+
+## tidyverse for data manipulation and plotting
+# loads eight different libraries simultaneously
+library(tidyverse)
+
+## tidygraph for network data
+library(tidygraph)
+
+## ggraph to plot networks
+library(ggraph)
+
+## tidytext for text analytics
+library(tidytext)
+
+## ggwordcloud for word clouds
+library(ggwordcloud)
+
+## widyr for tidy data processing
+library(widyr)
+
+## topicmodels for latent Dirichlet allocation
+library(topicmodels)
+```
+
+## Task 1: Import Data
+
+We will use the same data as in the analytical lecture: **amazon_reviews.txt** and **google_reviews.txt**.
+After you load the data, then you will execute other commands on the data.
+
+### Task 1.1
+
+Use the **read_delim()** and **here()** functions to load the data files for this working session. 
+Save the data as the objects **amazon_raw** and **google_raw**. 
+Use **glimpse()** to preview both data tables. 
+
+**Questions 1.1**: Answer these questions:
+(1) How many *observations* are there in the **amazon_raw** data table?
+(2) What are the *first four words* of the *first comment of the cons* in the **google_raw** data table?
+
+**Responses 1.1**: *(1) 500 obs (2) It is becoming larger*.
+
+```{r, task1_1}
+##important data objects
+amazon_raw <- read_delim(
+  here("data", "amazon_reviews.txt"),
+  # delimiter
+  delim = "|"
+)
+
+#preview data
+glimpse(amazon_raw)
+
+##import data objects
+google_raw <- read_delim(
+  here("data", "google_reviews.txt"),
+  delim = "|"
+)
+
+## preview data
+glimpse(google_raw)
+```
+
+## Task 2: Clean Data
+
+For this task, you will clean the data.
+
+### Task 2.1
+
+Create a new data table named **emp_reviews**.
+To create it, *row bind* **amazon_raw** and **google_raw** and set **.id** to **org**.
+Add an **id** variable to identify the rows of the new data table, change **org** to a *factor*, and recode the levels of **org** to identify **amazon** and **google** rows.
+Select the **id**, **org**, **pros**, and **cons** columns.
+Group the data table *row-wise*.
+Filter the data table to include only rows with at least one non-missing value for the **pros** and **cons** columns.
+Remove the *row-wise* groups.
+
+Apply **glimpse()** to **emp_reviews** to preview the data table.
+
+**Questions 2.1**: Answer these questions:
+(1) How many *observations* are there in the **emp_reviews** data table?
+(2) What are the *first four words* of the *first comment* in the **pros** column?
+
+**Responses 2.1**: *(1) 998 (2) Interal tools prolifeation has*.
+
+```{r, task2_1}
+##convert variables 
+emp_reviews <- amazon_raw %>%
+  bind_rows(
+    google_raw,
+    .id = "org"
+  ) %>%
+  mutate(
+    id = row_number(),
+    org = as_factor(org),
+    org = fct_recode(
+      org,
+      "amazon" = "1",
+      "google" = "2"
+    )
+  ) %>%
+  select(id, org, pros, cons) %>%
+  rowwise() %>%
+  filter(
+    any(
+      !is.na(
+        c_across(pros:cons)
+      )
+    )
+  ) %>%
+  ungroup() 
+
+
+## glimpse data to confirm changes
+glimpse(emp_reviews)
+
+
+```
+
+### Task 2.2
+
+Overwrite **emp_reviews** by making it a long data table.
+Pivot the **pros** and **cons** columns, identify the pivoted columns in a column named **type**, and identify the values of the pivoted columns in a column named **comment**.
+Filter for rows with non-missing *comments*.
+
+Apply **glimpse()** to **emp_reviews** to preview the data table.
+
+**Questions 2.2**: Answer these questions:
+(1) How many *observations* are there in the updated **emp_reviews** data table?
+(2) What are the *first four words* of the *third row* in the **comment** column?
+
+**Responses 2.2**: *(1) 1994 (2) Brand name is great*.
+
+```{r, task2_2}
+### make long data table
+## overwrite working data
+emp_reviews <- emp_reviews %>%
+  pivot_longer(
+    cols = c(pros, cons),
+    names_to = "type",
+    values_to = "comment"
+  ) %>% 
+  filter(
+    !is.na(comment)
+  )
+
+## preview
+glimpse(emp_reviews)
+```
+
+## Task 3: Tokenize Text
+
+For this task, you will tokenize the comments as unigrams.
+
+### Task 3.1
+
+Create a new data table named **unigrams**.
+Pipe **emp_reviews** into **unnest_tokens()**.
+Tokenize the **comments** column as unigrams, setting the name of the token column to **word**.
+Count the **word** column in **unigrams** while *arranging* the result by *descending* count.
+ 
+**Questions 3.1**: Answer these questions:
+(1) How many *distinct* words are there in the **unigrams** data table?
+(2) What is the *count* of the most frequent word?
+
+**Responses 3.1**: *(1) 3760 (2) 1247*.
+
+```{r, task3_1}
+### unigram comments
+unigrams <- emp_reviews %>%
+  unnest_tokens(
+    word,
+    comment
+  )
+
+### count words
+unigrams %>%
+  count(word) %>%
+  arrange(desc(n))
+
+```
+
+### Task 3.2
+
+Overwrite **unigrams** by performing an **anti-join** with **stop_words**.
+Pipe **unigrams** into **anti_join()**.
+Specify **stop_words** as an input and set the key to **word** in **anti_join()**.
+Count the **word** column in **unigrams** while *arranging* the result by *descending* count.
+
+**Questions 3.2**: Answer these questions:
+(1) How many *distinct* words are there in the updated **unigrams** data table?
+(2) What is the *count* of the most frequent word?
+
+**Responses 3.2**: *(1) 3231 (2) 371 *.
+
+```{r, task3_2}
+### remove stop words
+unigrams <- unigrams %>%
+  anti_join(
+    stop_words,
+    by = "word"
+  )
+
+### count words
+unigrams %>%
+  count(word) %>%
+  arrange(desc(n))
+```
+
+## Task 4: Term Frequency - Inverse Document Frequency
+
+For this task, you will calculate the term and inverse document frequencies.
+
+### Task 4.1
+
+Create a data table named **doc_count** from **unigrams**.
+This data table should consist of the *distinct* combinations of **id**, **org**, and **type**.
+Count the number of combinations of **org** and **type**.
+Name the count column **n_doc** and sort the data table by descending count.
+
+Create a data table named **doc_word_count** from **unigrams**.
+This data table should consist of the *distinct* combinations of **id**, **org**, **type**, and **word**.
+Count the number of combinations of **org**, **type**, and **word**.
+Name the count column **n_doc_word** and sort the data table by descending count.
+
+Create a data table named **word_count** from **unigrams**.
+Count the number of combinations of **org**, **type**, and **word**.
+Name the count column **n_word** and sort the data table by descending count.
+
+Overwrite **word_count** with two *left joins*.
+Pipe **word_count** into **left_join()** with **doc_word_count** joining by **org**, **type**, and **word**.
+Pipe the result into **left_join()** with **doc_count** joining by **org** and **type**.
+
+Overwrite **word_count** by calculating new variables from groups.
+Pipe **word_count** into groups formed by **org** and **type**.
+Calculate the *term frequency* (named **tf**), *document frequency* (**df**), *log of inverse document frequency* (**idf**), and *term frequency - inverse document frequency* (**tf_idf**) with the appropriate formulas.
+Remove the groups.
+Prnt a preview of the updated **word_count**.
+
+**Questions 4.1**: Answer these questions:
+(1) What is the *absolute frequency* of the *first* listed word?
+(2) How many *documents* contain the *second* listed word?
+(3) In how many *documents* could have the *third* listed word appeared given the word's *organization* and *type* identifier?
+(4) What is the *term frequency - inverse document frequency* of the *fourth* listed word?
+
+**Responses 4.1**: *(1) 0.0445 (2) 94 (3) 492 (4) 0.0460*.
+
+```{r, task4_1}
+### number of distinct comments per organization and type
+doc_count <- unigrams %>%
+  distinct(id, org, type) %>%
+  count(org, type, name = "n_doc", sort = TRUE)
+
+
+### number of comments containing each word
+doc_word_count <- unigrams %>%
+  distinct(id, org, type, word) %>%
+  count(org, type, word, name = "n_doc_word", sort = TRUE)
+
+
+### number of words per organization and type
+word_count <- unigrams %>%
+  count(org, type, word, name = "n_word", sort = TRUE) 
+
+### join count data tables
+word_count <- word_count %>%
+  left_join(
+    doc_word_count, 
+    by = c("org", "type", "word")
+  ) %>%
+  left_join(
+    doc_count,
+    by = c("org", "type")
+  )
+
+### compute frequency statistics
+word_count <- word_count %>%
+  group_by(org, type) %>%
+  mutate(
+    tf = n_word / sum(n_word),
+    df = n_doc_word / n_doc,
+    idf = log(n_doc / n_doc_word),
+    tf_idf = tf * idf
+  ) %>% 
+  ungroup()
+
+## preview 
+word_count
+
+```
+
+## Task 5: Examine Words
+
+For this task, you will examine the unigrams.
+
+### Task 5.1
+
+Create a data table named **top_word_count**.
+Pipe **word_count** into groups formed by **org** and **type**.
+Slice for the *top 15* words by *term frequency - inverse document frequency* removing any ties.
+Remove groups.
+Change to *title case* **org**, **type**, and **word**.
+Calculate a new variable named **word_id** reordering **word** within **org** and **type** by *term frequency - inverse document frequency*.
+Print all rows of the data table.
+
+**Questions 5.1**: Answer these questions:
+(1) For *Amazon cons*, what is the top word by *term frequency - inverse document frequency*?  
+(2) For *Google pros*, what is the top word by *term frequency - inverse document frequency*?  
+
+**Responses 5.1**: *(1) 0.0419 (2) 0.0575*.
+
+```{r, task5_1}
+## compare top words by organization, comment type
+top_word_count <- word_count %>%
+  group_by(org, type) %>%
+  slice_max(
+    tf_idf, 
+    n = 15,
+    with_ties = FALSE
+  ) %>%
+  ungroup() %>%
+  mutate(
+    across(
+      .cols = c(org, type, word),
+      .fns = str_to_title
+    ),
+    word_id = reorder_within(
+      word, 
+      tf_idf, 
+      list(org, type)
+    )
+  )
+
+## print
+top_word_count %>%
+  print(n = Inf)
+```
+
+### Task 5.2
+
+Create a plot to visualize the top word counts.
+Call **ggplot()** and set the *data* to **top_word_count**, the *x-axis* to **word_id**, the *y-axis* to **tf_idf**, and the *fill* to **type**.
+Add a **geom_col()** layer and set the *show legend* option to **FALSE**.
+Add a **geom_text()** layer and map to *label* rounded values of **tf_idf** to *four* digits, position the values in the middle of the bars, and color the values *white*.
+Scale the *x-axis* with **scale_x_reordered()**.
+Create facets of **org** and **type** with **facet_wrap()**.
+Fill the *cons* bars *dark red* and *pros* bars *dark green*.
+Flip the coordinates with **coord_flip()**.
+Label the axes appropriately.
+
+**Questions 5.2**: Answer these questions:
+(1) Is the **tf_idf** for **Time** greater for *Amazon cons* or *Amazon pros*? 
+(2) For *Google cons*, what is the top word by *term frequency - inverse document frequency*?  
+
+**Responses 5.2**: *(1) greater for Amazon pros (2) Company*.
+
+```{r, task5_2}
+### visualize top word counts
+ggplot(
+  top_word_count,
+  aes(
+    x = word_id,
+    y = tf_idf,
+    fill = type
+  )
+) +
+  geom_col(show.legend = FALSE) +
+  geom_text(
+    aes(
+      label = round(
+        tf_idf,
+        digits = 4
+      )
+    ),
+    position = position_stack(vjust = 0.5),
+    color = "white"
+  ) +
+  scale_x_reordered() +
+  facet_wrap(
+    vars(org, type), 
+    scales = "free"
+  ) +
+  scale_fill_manual(
+    values = c(
+      "darkred", 
+      "darkgreen"
+    )
+  ) +
+  coord_flip() +
+  labs(x = "Word", y = "TF - IDF") 
+
+```
+
+### Task 5.3
+
+Create a plot to visualize the top word counts with a word cloud.
+Call **ggplot()** and set the *data* to **top_word_count**, the *label* to **word**, the *size* to **tf_idf**, the *color* to **type**, and the *shape* to **square**.
+Add a **geom_text_wordlcoud()** layer and set the *show legend* option to **FALSE**.
+Scale the area with **scale_size_area()** and set the *max size* to **5**.
+Create facets of **org** and **type** with **facet_wrap()**.
+Fill the *cons* words *dark red* and *pros* words *dark green*.
+
+**Questions 5.3**: Which word in *Google cons* and *Google pros* occurs relatively less prominently with respect to *term frequency - inverse document frequency*?
+
+**Responses 5.3**: *Projects*.
+
+```{r, task5_3}
+## word cloud
+ggplot(
+  top_word_count,
+  aes(
+    label = word,
+    size = tf_idf,
+    color = type
+  ),
+  shape = "square"
+) +
+  geom_text_wordcloud(show.legend = FALSE) +
+  scale_size_area(max_size = 5) +
+  facet_wrap(
+    vars(org, type), 
+    scales = "free"
+  ) +
+  scale_color_manual(
+    values = c(
+      "darkred", 
+      "darkgreen"
+    )
+  )
+```
+
+## Task 6: Sentiment Analysis
+
+For this task, you will perform sentiment analysis.
+
+### Task 6.1
+
+Create a data table named **bing_sent**.
+Pipe **unigrams** into **inner_join()** to join with the *bing sentiments* by **word**.
+Change to *title case* **org**, **type**, and **sentiment**.
+Group by **org** and **type**.
+Count by the number of **sentiment** values by the formed groups.
+Calculate the *proportion* (named **prop**) of each **sentiment** value by the formed groups.
+Remove the groups.
+
+Create plot object named **bing_sent_plot**.
+Call **ggplot()** and set the *data* to **bing_sent**, the *x-axis* to **sentiment**, the *y-axis* to **prop**, and the *fill* to **type**.
+Add a **geom_col()** layer and set the *show legend* option to **FALSE**.
+Add a **geom_text()** layer and map to *label* rounded values of **prop** to *three* digits, position the values in the middle of the bars, and color the values *white*.
+Create facets of **org** in the rows and **type** in the columns with **facet_grid()**.
+Fill the *cons* bars *dark red* and *pros* bars *dark green*.
+Label the axes appropriately.
+Display the plot.
+
+**Questions 6.1**: Answer these questions:
+(1) Do *Amazon* or *Google* employee reviews have a higher proportion of *negative sentiment* for the *cons* comments?
+(2)  Do *Amazon* or *Google* employee reviews have a higher proportion of *positive sentiment* for the *pros* comments?
+
+**Responses 6.1**: *(1) Amazon (2) Google*.
+
+```{r, task6_1}
+### examine dictionary
+## bing
+get_sentiments("bing") %>%
+  ## sample
+  slice_sample(n = 20)
+
+
+### score sentiments
+## call data
+bing_sent <- unigrams %>%
+  ## inner join
+  inner_join(
+    # sentiment
+    get_sentiments("bing"),
+    # key
+    by = "word"
+  ) %>%
+  ## update variables
+  mutate(
+    # title case
+    across(
+      # columns
+      .cols = c(org, type, sentiment),
+      # function
+      .fns = str_to_title
+    )
+  ) %>%
+  ## group by organization, comment type
+  group_by(org, type) %>%
+  ## count sentiments
+  count(sentiment, name = "count") %>%
+  ## add variable
+  mutate(
+    # proportions
+    prop = count / sum(count)
+  ) %>%
+  ## remove groups
+  ungroup()
+
+
+
+### plot bing sentiments
+## call plot
+bing_sent_plot <- ggplot(
+  # data
+  bing_sent,
+  # mapping
+  aes(
+    # x-axis
+    x = sentiment,
+    # y-axis
+    y = prop,
+    # fill
+    fill = type
+  )
+) +
+  ## bars
+  geom_col(show.legend = FALSE) +
+  ## text
+  geom_text(
+    # mapping
+    aes(
+      # rounded labels
+      label = format(
+        # round
+        round(
+          # variable
+          prop,
+          # decimals
+          digits = 3
+        ),
+        # digits
+        digits = 3
+      )
+    ),
+    # position text in middle
+    position = position_stack(vjust = 0.5),
+    # color
+    color = "white"
+  ) +
+  ## facets
+  facet_grid(
+    # variables
+    org ~ type
+  ) +
+  ## scale fill
+  scale_fill_manual(
+    # colors
+    values = c(
+      # cons
+      "darkred", 
+      # pros
+      "darkgreen"
+    )
+  ) +
+  ## axes labels
+  labs(x = "Sentiment", y = "Proportion Negative or Positive")
+
+## display plot
+bing_sent_plot
+  
+```
+
+### Task 6.2
+
+Create a data table named **afinn_sent**.
+Pipe **unigrams** into **inner_join()** to join with the *afinn sentiments* by **word**.
+Change to *title case* **org**, **type**, and **sentiment**.
+Group by **org** and **type**.
+Summarize the **value** column by **sum**, **mean**, **sd**, and **median**.
+Name the resulting columns by function.
+Drop the groups.
+
+Create plot object named **afinn_sent_plot**.
+Call **ggplot()** and set the *data* to **afinn_sent**, the *x-axis* to **type**, the *y-axis* to **mean**, and the *fill* to **type**.
+Add a **geom_col()** layer and set the *show legend* option to **FALSE**.
+Add a **geom_text()** layer and map to *label* rounded values of **mean** to *three* digits, position the values in the middle of the bars, color the values **skyblue**, set the *size* to **6**, the *font family* to **serif**, and *font face* to **bold**.
+Create facets of **org** in the columns with **facet_grid()**.
+Fill the *cons* bars *dark red* and *pros* bars *dark green*.
+Label the axes appropriately.
+Display the plot.
+
+**Questions 6.2**: Answer these questions:
+(1) Do *Amazon* or *Google* employee reviews have a *lower sentiment value* for the *cons* comments?
+(2)  Do *Amazon* or *Google* employee reviews have a *higher sentiment value* for the *pros* comments??
+
+**Responses 6.2**: *(1) Amazon (2) Google*.
+
+```{r, task6_2}
+### examine dictionary
+## afinn
+get_sentiments("afinn") %>%
+  ## sample
+  slice_sample(n = 20)
+
+
+
+### score sentiments
+## call data
+afinn_sent <- unigrams %>%
+  ## inner join
+  inner_join(
+    # sentiment
+    get_sentiments("afinn"),
+    # key
+    by = "word"
+  ) %>%
+  ## update variables
+  mutate(
+    # title case
+    across(
+      # columns
+      .cols = c(org, type),
+      # function
+      .fns = str_to_title
+    )
+  ) %>%
+  ## group by organizations
+  group_by(org, type) %>%
+  ## summarize value
+  summarize(
+    # apply functions to variable
+    across(
+      # columns
+      .cols = value,
+      # functions
+      .fns = list(
+        # sum
+        sum = sum,
+        # mean
+        mean = mean,
+        # sd
+        sd = sd,
+        # median
+        median = median
+      ),
+      # name
+      .names = "{.fn}"
+    ),
+    # groups
+    .groups = "drop"
+  )
+
+
+### plot afinn sentiments
+## call plot
+afinn_sent_plot <- ggplot(
+  # data
+  afinn_sent,
+  # mapping
+  aes(
+    # x-axis
+    x = type,
+    # y-axis
+    y = mean,
+    # fill
+    fill = type
+  )
+) +
+  ## bars
+  geom_col(show.legend = FALSE) +
+  ## text
+  geom_text(
+    # mapping
+    aes(
+      # rounded labels
+      label = round(
+        # variable
+        mean,
+        # decimals
+        digits = 3
+      )
+    ),
+    # position text in middle
+    position = position_stack(vjust = 0.5),
+    # color
+    color = "skyblue3",
+    # size
+    size = 6,
+    # font family
+    family = "serif",
+    # font face
+    fontface = "bold"
+  ) +
+  ## facets
+  facet_grid(
+    # variables
+    ~ org
+  ) +
+  ## scale fill
+  scale_fill_manual(
+    # colors
+    values = c(
+      # cons
+      "darkred", 
+      # pros
+      "darkgreen"
+    )
+  ) +
+  ## axes labels
+  labs(x = "Comment Type", y = "Mean Sentiment") 
+
+
+
+## display plot
+afinn_sent_plot
+
+```
+
+### Task 6.3
+
+Create a data table named **nrc_sent**.
+Pipe **unigrams** into **inner_join()** to join with the *afinn sentiments* by **word**.
+Change to *title case* **org**, **type**, **word**, and **sentiment**.
+Count by the number of **org**, **type**, and **sentiment** groups and name the variable **count**.
+Calculate a new variable named **sentiment_id** reordering **sentiment** within **org** and **type** by **count**.
+
+Create plot object named **nrc_sent_plot**.
+Call **ggplot()** and set the *data* to **nrc_sent**, the *x-axis* to **sentiment_id**, the *y-axis* to **count**, and the *fill* to **type**.
+Add a **geom_col()** layer and set the *show legend* option to **FALSE**.
+Add a **geom_text()** layer and map to *label* rounded values of **count**, position the values in the middle of the bars, color the values **skyblue**, set the *size* to **4**, and *font face* to **bold**.
+Scale the *x-axis* with **scale_x_reordered()**.
+Create facets of **org** and **type** with **facet_wrap()**.
+Fill the *cons* bars *dark red* and *pros* bars *dark green*.
+Flip the coordinates with **coord_flip()**.
+Label the axes appropriately.
+Display the plot.
+
+**Questions 6.3**: Answer these questions:
+(1) Do *Amazon* or *Google* employee reviews have *more trust sentiments* in their *pros* comments?
+(2)  Do *Amazon* or *Google* employee reviews have *more anger sentiments* for the *cons* comments??
+
+**Responses 6.3**: *(1) Amazon (2) Amazon*.
+
+```{r, task6_3}
+## nrc
+get_sentiments("nrc") %>%
+  slice_sample(n = 20)
+
+### score sentiments
+nrc_sent <- unigrams %>%
+  inner_join(
+    get_sentiments("nrc"),
+    by = "word"
+  ) %>%
+  mutate(    
+    across(
+      .cols = c(org, type, word, sentiment),
+      .fns = str_to_title
+    )
+  ) %>%
+  count(org, type, sentiment, name = "count") %>%
+  mutate(
+    sentiment_id = reorder_within(
+      sentiment, 
+      count, 
+      list(org, type)
+    )
+  )
+
+### plot nrc sentiments
+nrc_sent_plot <- ggplot(
+  nrc_sent,
+  aes(
+    x = sentiment_id, 
+    y = count, 
+    fill = type
+  )
+) + 
+  geom_col(show.legend = FALSE) +
+  geom_text(
+    aes(label = count),
+    position = position_stack(vjust = 0.5),
+    color = "skyblue3",
+    size = 4,
+    fontface = "bold"
+  ) +
+  scale_x_reordered() +
+  facet_wrap(
+    vars(org, type),
+    scales = "free"  
+  ) +
+  scale_fill_manual(
+    values = c(
+      "darkred", 
+      "darkgreen"
+    )
+  ) +
+  coord_flip() +
+  labs(x = "Sentiment", y = "Count") 
+
+## display plot
+nrc_sent_plot
+```
+
+## Task 7: Bigrams
+
+For this task, you will examine bigrams.
+
+### Task 7.1
+
+Create a new data table named **bigrams**.
+Pipe **emp_reviews** into **unnest_tokens()**.
+Tokenize the **comments** column as *bigrams* using the appropriate inputs, setting the name of the token column to **bigram**.
+Filter for non-missing values in **bigram**.
+Count the **bigram** column in **bigrams** while *sorting* the count.
+
+**Questions 7.1**: What is the most frequent bigram?
+
+**Responses 7.1**: *To work*.
+
+```{r, task7_1}
+### bigram tokens
+bigram <- emp_reviews %>%
+  unnest_tokens(
+    bigram,
+    comment,
+    token = "ngrams",
+    n = 2
+  ) %>%
+  filter(
+    !is.na(bigram)
+  )
+
+## preview
+bigram
+
+### bigram counts
+bigram %>%
+  count(bigram, sort = TRUE)
+
+```
+
+### Task 7.2
+
+Update **bigrams** by separting the two words in the **bigram** column.
+Name the new columns **word_1** and **word_2**.
+Reference the correct separator.
+
+Create a data table named **bigrams_filtered**.
+Pipe **bigrams** into a *first* filter statement where all of rows with words in **word_1** that are *not* a stop word from **stop_words** are kept.
+Pipe the result into a *second* filter statement where all of rows with words in **word_2** that are *not* a stop word from **stop_words** are kept.
+
+Create a *table graph* object named **bigrams_tg**.
+Pipe **bigrams_filtered** into **count()** where the combinations of **word_1** and **word_2** are counted.
+Name the result **count**.
+Filter for counts greater then **5**.
+Convert to a *table graph* using **as_tbl_graph()**.
+
+Create a network plot named **bigrams_tg_plot**.
+Call **ggraph()** and set the *data* to **bigrams_tg** and *layout* to **kk**.
+Add a **geom_edge_link()** layer, setting **alpha** to **count**, excluding the legend, setting the **arrow** to a *closed triangle*, and setting the **end_cap** to a *circle*.
+Add a **geom_node_point()** layer, setting the **color** to **skyblue3** and **size** to **5**.
+Add a **geom_node_text()** layer, setting the **label** to **name** and **repel** to **TRUE**.
+Remove any theme.
+Display the plot.
+
+**Question 7.2**: What *words* describe the *environment* at the two organizations?
+
+**Response 7.2**: *work life and balance, fast paced, free food *.
+
+```{r, task7_2}
+### separate bigrams
+bigram <- bigram %>%
+  separate(
+    bigram,
+    c("word_1", "word_2"),
+    sep = " "
+  ) 
+
+### filter for stop words
+bigram_filtered <- bigram %>%
+  filter(!word_1 %in% stop_words$word) %>%
+  filter(!word_2 %in% stop_words$word)
+
+### table graph for bigrams
+bigram_tg <- bigram_filtered %>%
+  count(word_1, word_2, name = "count", sort = TRUE) %>%
+  filter(count >= 5) %>%
+  as_tbl_graph()
+
+### plot graph of bigrams
+bigram_tg_plot <- ggraph(
+  bigram_tg,
+  layout = "kk"
+) +
+  geom_edge_link(
+    aes(
+      alpha = count
+    ),
+    show.legend = FALSE,
+    arrow = arrow(
+      type = "closed",
+      length = unit(0.15, "inches")
+    ),
+    end_cap = circle(0.07, "inches")
+  ) +
+  geom_node_point(
+    color = "skyblue3",
+    size = 5
+  ) +
+  geom_node_text(
+    aes(
+      label = name
+    ),
+    repel = TRUE
+  ) +
+  theme_void()
+
+
+
+## display plot
+bigram_tg_plot
+```
+
+### Task 7.3
+
+Create a new data table named **bigrams_united**.
+Pipe **bigrams_filtered** into *first* **unite()** where you create a new column named **bigram** from the **word_1** and **word_2** columns.
+Pipe the result into a *second* **unite()** where you create a new column named **org_type** from the **org** and **type** columns.
+Change to *title case* the **org_type** and **bigram** columns.
+
+Create a new data tabel named **bigrams_tf_idf**.
+Pipe **bigrams_united** into **count()**.
+Count the combinations of **org_type** and **bigram**.
+Name the new column **count**.
+Pipe the result into **bind_tf_idf()** and set the term to **bigram**, the document to **org_type**, and counts to **count**.
+Arrange by *descending* **tf_idf**.
+Print the result.
+
+**Question 7.3**: What is the *top bigram* by **tf_idf**?
+
+**Response 7.3**: *Free food*.
+
+```{r, task7_3}
+### unite words
+bigram_united <- bigram_filtered %>%
+  unite(
+    bigram,
+    word_1, word_2,
+    sep = " "
+  ) %>%
+  unite(
+    org_type,
+    org, type,
+    sep = " "
+  ) %>%
+  mutate(
+    across(
+      .cols = c(org_type, bigram),
+      .fns = str_to_title
+    )
+  )
+
+## preview
+bigram_united
+
+### bigram tf-idf
+bigram_tf_idf <- bigram_united %>%
+  count(org_type, bigram, name = "count") %>%
+  bind_tf_idf(
+    bigram,
+    org_type,
+    count
+  ) %>%
+  arrange(desc(tf_idf))
+
+## preview
+bigram_tf_idf
+
+```
+
+### Task 7.4
+
+Create a new data table named **top_bigrams_count**.
+Pipe **bigrams_tf_idf** into **group_by()** and form groups via **org_type**.
+Slice for the *top 10* values of **count** while removing ties.
+Remove the groups.
+Calculate a new variable named **bigram_id** reordering **bigram** within **org_type** by **count**.
+
+Create plot object named **top_bigrams_count_plot**.
+Call **ggplot()** and set the *data* to **top_bigrams_count**, the *x-axis* to **bigram_id**, the *y-axis* to **count**, and the *fill* to **org_type**.
+Add a **geom_col()** layer and set the *show legend* option to **FALSE**.
+Add a **geom_text()** layer and map to *label* rounded values of **count**, position the values in the middle of the bars, and color the values **white**.
+Scale the *x-axis* with **scale_x_reordered()**.
+Create facets of **org_type** with **facet_wrap()**.
+Fill the *cons* bars *dark red* and *pros* bars *dark green*.
+Flip the coordinates with **coord_flip()**.
+Label the axes appropriately.
+Display the plot.
+
+**Question 7.4**: Answer these questions:
+(1) What is the *most frequent bigram* for *Amazon pros* comments?
+(2) Are there *more life balance bigrams* for *Google cons* or *Google pros*?
+
+**Response 7.4**: *(1) Smart People (2) Google *.
+
+```{r, task7_4}
+### compare top words by organization, comment type
+top_bigram_count <- bigram_tf_idf %>%
+  group_by(org_type) %>%
+  slice_max(
+    count, 
+    n = 10,
+    with_ties = FALSE
+  ) %>%
+  ungroup() %>%
+  mutate(
+    bigram_id = reorder_within(
+      bigram, 
+      count, 
+      org_type
+    )
+  )
+
+## print
+top_bigram_count %>%
+  print(n = Inf)
+
+### visualize top word counts
+top_bigram_count_plot <- ggplot(
+  top_bigram_count,
+  aes(
+    x = bigram_id,
+    y = count,
+    fill = org_type
+  )
+) +
+  geom_col(show.legend = FALSE) +
+  geom_text(
+    aes(
+      label = round(
+        count
+      )
+    ),
+    position = position_stack(vjust = 0.5),
+    color = "white"
+  ) +
+  scale_x_reordered() +
+  facet_wrap(
+    vars(org_type), 
+    scales = "free"
+  ) +
+  scale_fill_manual(
+    values = c(
+      "darkred", "darkgreen",
+      "darkred", "darkgreen"
+    )
+  ) +
+  coord_flip() +
+  labs(x = "Bigram", y = "Count") 
+
+## display plot
+top_bigram_count_plot
+```
+
+## Task 8: Counting and Correlating Pairs of Words
+
+For this task, you will count and correlate pairs of words.
+
+### Task 8.1
+
+Create a new data table named **word_pairs**.
+Pipe **unigrams** into **unite()**.
+Create a new column named **id_org_type** from **id**, **org**, and **type**.
+Change to *title case* **id_org_type** and **word**.
+Pipe the result to **pairwise_count()** to count **word** by **id_org_type** and sorting the result.
+
+Create a new data table named **word_pairs_tg**.
+Pipe **word_pairs** into **rename()** to rename **n** to **count**.
+Filter by counts greater than or equal to **15**.
+Convert to a *table graph* with **as_tbl_graph()**.
+
+Create a network plot named **word_pairs_tg_plot**.
+Call **ggraph()** and set the *data* to **word_pairs_tg** and *layout* to **kk**.
+Add a **geom_edge_link()** layer, setting **alpha** to **count**, and excluding the legend.
+Add a **geom_node_point()** layer, setting the **color** to **skyblue3** and **size** to **5**.
+Add a **geom_node_text()** layer, setting the **label** to **name** and **repel** to **TRUE**.
+Remove any theme.
+Display the plot.
+
+**Questions 8.1**: Answer these questions:
+(1) Which *word* pairs with the most other words in the plot?
+(2) With what *word* does *decent* pair in the plot?
+
+**Responses 8.1**: *(1) People (2) Pay*.
+
+```{r, task8_1}
+### count word pairs
+word_pairs <- unigrams %>%
+  unite(
+    id_org_type,
+    id, org, type,
+    sep = " "
+  ) %>%
+  mutate(
+    across(
+      .cols = c(id_org_type, word),
+      .fns = str_to_title
+    )
+  ) %>%
+  pairwise_count(
+    word,
+    id_org_type,
+    sort = TRUE
+  )
+
+## preview
+word_pairs 
+
+### table graph for word pairs
+word_pairs_tg <- word_pairs %>%
+  rename(count = n) %>%
+  filter(count >= 15) %>%
+  as_tbl_graph()
+
+### plot graph of bigrams
+word_pairs_tg_plot <- ggraph(
+  word_pairs_tg,
+  layout = "kk"
+) +
+  geom_edge_link(
+    aes(
+      alpha = count
+    ),
+    show.legend = FALSE
+  ) +
+  geom_node_point(
+    color = "skyblue3",
+    size = 5
+  ) +
+  geom_node_text(
+    aes(
+      label = name
+    ),
+    repel = TRUE
+  ) +
+  theme_void()
+
+## display plot
+word_pairs_tg_plot
+
+```
+
+### Task 8.2
+
+Create a new data table named **word_cors**.
+Pipe **unigrams** into **unite()**.
+Create a new column named **id_org_type** from **id**, **org**, and **type**.
+Change to *title case* **id_org_type** and **word**.
+Group by **word**.
+Filter for counts greater than or equal to **25**.
+Pipe the result to **pairwise_cor()** to count **word** by **id_org_type** and sorting the result.
+
+Create a new data table named **word_cors_tg**.
+Pipe **word_cors** into **filter()** to filter by *abosulte correlations* greater than or equal to **0.08**.
+Create a new column named **cor_type** that indicates whether a correlation is *positive* or *negative*.
+Convert to a *table graph* with **as_tbl_graph()**.
+
+Create a network plot named **word_cors_tg_plot**.
+Call **ggraph()** and set the *data* to **word_cors_tg** and *layout* to **kk**.
+Add a **geom_edge_link()** layer, setting **alpha** to **correlation** and **color** to **cor_type**, excluding the legend, and setting **width** to **2**.
+Add a **geom_node_point()** layer, setting the **color** to **skyblue3** and **size** to **5**.
+Add a **geom_node_text()** layer, setting the **label** to **name** and **repel** to **TRUE**.
+Color the edges *red* and *green* for *negative* and *positive* correlations, respectively.
+Remove any theme.
+Display the plot.
+
+**Questions 8.2**: Are the words *atomsphere* and *workers* *positively* or *negativel* correlated?
+
+**Responses 8.2**: *Positively correlated*.
+
+```{r, task8_2}
+### word correlations
+word_cors <- unigrams %>%
+  unite(
+    id_org_type,
+    id, org, type,
+    sep = " "
+  ) %>%
+  mutate(
+    across(
+      .cols = c(id_org_type, word),
+      .fns = str_to_title
+    )
+  ) %>%
+  group_by(word) %>%
+  filter(
+    n() >= 25 
+  ) %>%
+  pairwise_cor(
+    word,
+    id_org_type,
+    sort = TRUE
+  )
+
+## preview
+word_cors
+
+### table graph for word pairs
+word_cors_tg <- word_cors %>%
+  filter(abs(correlation) >= 0.08) %>%
+  mutate(
+    cor_type = if_else(
+      correlation >= 0,
+      "positive",
+      "negative"
+    )
+  ) %>%
+  as_tbl_graph()
+
+
+
+### plot graph of bigrams
+word_cors_tg_plot <- ggraph(
+  word_cors_tg,
+  layout = "kk"
+) +
+  geom_edge_link(
+    aes(
+      alpha = correlation,
+      color = cor_type
+    ),
+    show.legend = FALSE,
+    width = 2
+  ) +
+  geom_node_point(
+    color = "skyblue3",
+    size = 5
+  ) +
+  geom_node_text(
+    aes(
+      label = name
+    ),
+    repel = TRUE,
+    check_overlap = TRUE
+  ) +
+  scale_edge_color_manual(
+    values = c("red", "green")
+  ) + 
+  theme_void()
+
+
+
+## display plot
+word_cors_tg_plot
+```
+
+## Task 9: Topic Modeling
+
+For this task, you will perform topic modeling via *latent Dirichlet allocation* (LDA).
+
+### Task 9.1
+
+Create a document-term matrix named **org_type_dtm**.
+Pipe **unigrams** into **unite()**.
+Create a new column named **id_org_type** from **id**, **org**, and **type**.
+Change to *title case* **id_org_type** and **word**.
+Count by **id_org_type** and **word** and name the count variable **count**.
+Remove the groups.
+Pipe the result into **cast_dtm()** with **id_org_type** as the documents, **word** as the token, and **count** as the frequencies of words.
+Print **org_type_dtm**.
+
+Use **LDA()** to create a topic model with **8** topics on **org_type_dtm**.
+Set the random seed to **101**.
+
+**Questions 9.1**: Answer these questions:
+(1) How many total *documents* are there in the document-term matrix?
+(2) How many *non-sparse* entries are there in the document-term matrix?
+
+**Responses 9.1**: *(1) 1958 (2) 3231*.
+
+```{r, task9_1}
+### create document-term matrix
+org_type_dtm <- unigrams %>%
+  unite(
+    id_org_type,
+    id, org, type,
+    sep = " "
+  ) %>%
+  mutate(
+    across(
+      .cols = c(id_org_type, word),
+      .fns = str_to_title
+    ),
+    id = NULL
+  ) %>%
+  count(id_org_type, word, name = "count", sort = TRUE) %>%
+  ungroup() %>%
+  cast_dtm(
+    id_org_type,
+    word,
+    count
+  )
+
+## first preview
+org_type_dtm
+
+## second preview
+# call data
+org_type_dtm %>%
+  # convert to matrix
+  as.matrix() %>%
+  # preview subset of terms
+  .[31:50, 11:20]
+
+
+### fit LDA
+## save as object
+org_type_lda <- LDA(
+  # dtm
+  org_type_dtm,
+  # number of topics
+  k = 8,
+  # controls
+  control = list(seed = 101)
+)
+
+```
+
+### Task 9.2
+
+Create a data table named **lda_word_prob**.
+Apply **tidy()** to **org_type_lda** and set the **matrix** to **beta**.
+
+Create a new data table named **lda_top_terms**.
+Pipe **lda_word_prob** into **group_by()** and form groups via **topic**.
+Slice for the *top 5* values of **beta** while removing ties.
+Remove the groups.
+Calculate a new variable named **term_id** reordering **term** within **topic** by **beta**.
+Convert **topic** to a *factor*.
+
+Create plot object named **lda_top_terms_plot**.
+Call **ggplot()** and set the *data* to **lda_top_terms**, the *x-axis* to **term_id**, the *y-axis* to **beta**, and the *fill* to **topic**.
+Add a **geom_col()** layer and set the *show legend* option to **FALSE**.
+Add a **geom_text()** layer and map to *label* rounded values of **beta** to **3** digits, position the values in the middle of the bars, color the values **black**, and use the **bold** font face.
+Scale the *x-axis* with **scale_x_reordered()**.
+Create facets of **topic** with **facet_wrap()**.
+Flip the coordinates with **coord_flip()**.
+Label the axes appropriately.
+Display the plot.
+
+Create a new data table named **word_class**.
+Apply **augment()** to **org_type_lda** with **data** set to **org_type_dtm**.
+Rename **.topic** to **topic**.
+Convert **topic** to a *factor*.
+
+**Question 9.2**: Answer these questions:
+(1) What is the *most probable word* for the *fourth topic*?
+(2) Does the word *people* more likely to belong to the *third* or *sixth* topic?
+
+**Response 9.2**: *(1) Hours (2) the third topic*.
+
+```{r, task9_2}
+### extract word probabilities per topic
+lda_word_prob <- tidy(
+  org_type_lda,
+  matrix = "beta"
+)
+
+## finding most probable terms
+lda_top_terms <- lda_word_prob %>%
+  group_by(topic) %>%
+  slice_max(
+    beta, 
+    n = 5,
+    with_ties = FALSE
+  ) %>%
+  ungroup() %>%
+  mutate(
+    term_id = reorder_within(
+      term, 
+      beta, 
+      topic
+    ),
+    topic = as_factor(topic)
+  )
+
+## print
+lda_top_terms %>%
+  print(n = Inf)
+
+### visualize top term probabilities
+lda_top_terms_plot <- ggplot(
+  lda_top_terms,
+  aes(
+    x = term_id,
+    y = beta,
+    fill = topic
+  )
+) +
+  geom_col(show.legend = FALSE) +
+  geom_text(
+    aes(
+      label = format(
+        round(
+          beta,
+          digits = 3
+        ),
+        digits = 3
+      )
+    ),
+    position = position_stack(vjust = 0.5),
+    color = "black",
+    fontface = "bold"
+  ) +
+  scale_x_reordered() +
+  facet_wrap(
+    vars(topic), 
+    scales = "free"
+  ) +
+  coord_flip() +
+  labs(x = "Term", y = "Probability per Topic") 
+
+## display plot
+lda_top_terms_plot
+
+### assign words to topics
+word_class <- augment(
+  org_type_lda,
+  data = org_type_dtm
+) %>%
+  rename(topic = .topic) %>%
+  mutate(
+    topic = as_factor(topic)
+  )
+
+## preview
+word_class
+```
+
+### Task 9.3
+
+Create a data table named **lda_topic_prob**.
+Apply **tidy()** to **org_type_lda** and set the **matrix** to **gamma**.
+Convert **topic** to a *factor* and reverse its levels with **fct_rev()**.
+Separete the column **document** into columns **id**, **org**, and **type**.
+
+Create a new data table named **lda_summ_topics**.
+Pipe **lda_topic_prob** into **group_by()** and form groups via **id**, **org**, and **type**.
+Slice for the *top* value of **gamma**.
+Group by **org** and **type**.
+Count by **topic** and name the count **topic_count**.
+Remove the groups.
+Calculate a new variable named **topic_id** reordering **topic** within **org** and **type** by **topic_count**.
+
+Create plot object named **lda_summ_topics_plot**.
+Call **ggplot()** and set the *data* to **lda_summ_topics**, the *x-axis* to **topic_id**, the *y-axis* to **topic_count**, and the *fill* to **type**.
+Add a **geom_col()** layer and set the *show legend* option to **FALSE**.
+Add a **geom_text()** layer and map to *label* rounded values of **beta** to **2** digits, position the values in the middle of the bars, color the values **skyblue3**, and use the **bold** font face.
+Scale the *x-axis* with **scale_x_reordered()**.
+Color the bars by *cons* and *pros* in *dark red* and *dark green*, respectively.
+Create facets of **org** and **type** with **facet_wrap()**.
+Flip the coordinates with **coord_flip()**.
+Label the axes appropriately.
+Display the plot.
+
+Create a new data table named **topic_class**.
+Pipe **lda_topic_prob** into **group_by()** and form groups via **id**, **org**, and **type**.
+Slice by **gamma**.
+Remove groups.
+
+**Question 9.3**: Answer these questions:
+(1) What is the *most frequent topic* for *Google cons*?
+(2) What is the *most frequent topic* for *Amazon pros*?
+
+**Response 9.3**: *(1)topic 5 (2) topic 3*.
+
+```{r, task9_3}
+### extract topic probabilities per document
+lda_topic_prob <- tidy(
+  org_type_lda,
+  matrix = "gamma"
+) %>%
+  mutate(
+    topic = as_factor(topic),
+    topic = fct_rev(topic)
+  ) %>%
+  separate(
+    document,
+    c("id", "org", "type"),
+    sep = " "
+  )
+
+### summarize topic probabilities
+lda_summ_topics <- lda_topic_prob %>%
+  group_by(id, org, type) %>%
+  slice_max(
+    gamma,
+    n = 1
+  ) %>% 
+  group_by(org, type) %>%
+  count(topic, name = "topic_count") %>%
+  ungroup() %>%
+  mutate(
+    topic_id = reorder_within(
+      topic, 
+      topic_count, 
+      list(org, type)
+    )
+  )
+
+## preview
+lda_summ_topics %>%
+  print(n = Inf)
+
+### visualize topic probabilities
+lda_summ_topics_plot <- ggplot(
+  lda_summ_topics,
+  aes(
+    x = topic_id,
+    y = topic_count,
+    fill = type
+  )
+) +
+  geom_col(show.legend = FALSE) +
+  geom_text(
+    aes(
+      label = format(
+        round(
+          topic_count,
+          digits = 2
+        ),
+        digits = 2
+      )
+    ),
+    position = position_stack(vjust = 0.5),
+    color = "skyblue3",
+    fontface = "bold"
+  ) +
+  scale_x_reordered() +
+  scale_fill_manual(
+    values = c(
+      "darkred", "darkgreen",
+      "darkred", "darkgreen"
+    )
+  ) +
+  facet_wrap(
+    vars(org, type), 
+    scales = "free"
+  ) +
+  coord_flip() +
+  labs(x = "Topic", y = "Average Probability per Document") 
+
+## display plot
+lda_summ_topics_plot
+
+### assign topics to documents
+topic_class <- lda_topic_prob %>%
+  group_by(id, org, type) %>%
+  slice_max(gamma) %>%
+  ungroup()
+
+## print
+topic_class
+```
+
+## Task 10: Evaluate Topic Model
+
+For this task, you will evaluate the topic model.
+
+### Task 10.1
+
+Create a new data table named **org_type_topic_class**.
+Pipe **topic_class** into **count()**.
+Count by **org**, **type**, and **topic**.
+Name the count as **comment_count**.
+Group by **org** and **type**.
+Slice for the top **comment_count** values.
+Remove the groups.
+Select **org** and rename it **org_top**, select **type** and rename it **type_top**, and select **topic**.
+
+Pipe **topic_class** into **inner_join()** with **org_type_topic_class** and join by **topic**.
+Create a column named **match** to indicate whether **org** equals **org_top** and **type** equals **type_top**.
+Group by **id**, **org**, and **type**.
+Summarize by computing **match** via **sum()** applied to **match**.
+Drop the groups.
+Summarize again by computing **prop_match** via **sum()** applied to **match** and divided by the row count via **n()**.
+Drop the groups.
+
+**Question 10.1**: What is the matching proportion of topics?
+
+**Response 10.1**: *0.413*.
+
+```{r, task10_1}
+### compute most common topic per comment
+org_type_topic_class <- topic_class %>%
+  count(org, type, topic, name = "comment_count") %>%
+  group_by(org, type) %>%
+  slice_max(
+    comment_count,
+    n = 1
+  ) %>%
+  ungroup() %>%
+  select(
+    org_top = org, 
+    type_top = type,
+    topic
+  )
+
+### correcting top classifications
+topic_class %>%
+  inner_join(
+    org_type_topic_class, 
+    by = "topic"
+  ) %>%
+  mutate(
+    match = case_when(
+      org == org_top & type == type_top ~ 1,
+      TRUE ~ 0
+    )
+  ) %>%
+  group_by(id, org, type) %>%
+  summarize(
+    match = sum(match),
+    .groups = "drop"
+  ) %>%
+  summarize(
+    match_prop = sum(match) / n(),
+    .groups = "drop"
+  )
+
+```
+
+### Task 10.2
+
+Create a data table named **org_type_topic_word_class**.
+Pipe **word_class** into **separate()** and separate the **document** column into **id**, **org**, and **type** columns.
+Pipe the result into **inner_join()** to join with **org_type_topic_class** by **topic**.
+Pipe the result into a *first* **unite()** to cnite **org** and **type** into **org_type**.
+Pipe the result into a *second* **unite()** to unite **org_top** and **type_top** into **org_type_top**.
+
+Create a data table named **org_type_topic_word_class_summ**.
+Pipe **org_type_topic_word_class** into **count()** and count by **org_type** and **org_type_top** weighted by **count** naming the result **match**.
+Group by **org_type**.
+Calculate **match_prop** from **match** and the *sum* of **match**.
+Remove the groups.
+
+Create a heat map named **org_type_topic_word_class_summ_plot**.
+Call **ggplot()**, set the *data* to **org_type_topic_word_class_summ**, map **org_type_top** to the *x-axis*, **org_type** to the *y-axis*, and **match_prop** to the *fill*.
+Add a **geom_tile()** layer.
+Scale the fill with **scale_fill_gradient2()** setting **low** to **blue**, **high** to **red**, **midpoint** to **0.25**, and **label** to **scales::percent_format()**.
+Choose the *minimal* theme.
+Label the axes and fill appropriately.
+Display the plot.
+
+Pipe **org_type_topic_word_class** into **filter()** to filter for rows where **org_type** does *not* equal **org_type_top**.
+Count by **org_type**, **org_type_top**, and **term** weighted by **count**, naming the result **mismatch_count**.
+Remove the groups.
+Arrange by *descending* **mismatch_count**.
+
+**Questions 10.2**: Answer these questions:
+(1) Which *two* combinations of *organization* and *comment type* have the *highest percentage topic match*?
+(2) Which *word* has the *highest mismatch count*?
+
+**Responses 10.2**: *(1) The Google pros (2) people*.
+
+```{r, task10_2}
+### calculate word topic assignments
+org_type_topic_word_class <- word_class %>%
+  separate(
+    document,
+    c("id", "org", "type"),
+    sep = " "
+  ) %>%
+  inner_join(
+    org_type_topic_class,
+    by = "topic"
+  ) %>%
+  unite(
+    org_type,
+    org, type,
+    sep = " "
+  ) %>%
+  unite(
+    org_type_top,
+    org_top, type_top,
+    sep = " "
+  ) 
+
+### summary of word topic assignments
+org_type_topic_word_class_summ <- org_type_topic_word_class %>%
+  count(org_type, org_type_top, wt = count, name = "match") %>%
+  group_by(org_type) %>%
+  mutate(
+    match_prop = match / sum(match)
+  ) %>%
+  ungroup()
+
+### plot confusion matrix
+org_type_topic_word_class_summ_plot <- ggplot(
+  org_type_topic_word_class_summ,
+  aes(
+    x = org_type_top,
+    y = org_type,
+    fill = match_prop
+  )
+) +
+  geom_tile() +
+  scale_fill_gradient2(
+    low = "blue",
+    high = "red",
+    midpoint = 0.25,
+    label = scales::percent_format()
+  ) +
+  theme_minimal() +
+  labs(
+    x = "Assigned Topic",
+    y = "Referenced Topic",
+    fill = "% Match"
+  )
+
+## display plot
+org_type_topic_word_class_summ_plot
+
+### find incorrectly classified words
+org_type_topic_word_class %>%
+  filter(org_type != org_type_top) %>%
+  count(org_type, org_type_top, term, wt = count, name = "mismatch_count") %>%
+  ungroup() %>%
+  arrange(desc(mismatch_count))
+```
+
+## Task 11: Save Plots and Data
+
+For this task, you will save created objects.
+
+### Task 11.1
+
+Save **emp_reviews** as the data file **emp_reviews.txt** in the **data** folder of the project directory using **write_delim()**.
+
+Save the ten plot objects as **png** files in the **plots** folder of the project directory.
+Use a width of *9 inches* and height of *9 inches* for all plots.
+
+```{r, task11_1}
+### save working data
+write_delim(
+  emp_reviews,
+  file = here("data", "emp_reviews.txt"),
+  delim = "|"
+)
+
+### save plots to folder in project directory
+ggsave(
+  here("plots", "afinn_sent.png"), 
+  plot = afinn_sent_plot,
+  units = "in", width = 9, height = 9
+)
+
+## save a single plot to a file
+ggsave(
+  here("plots", "bigram_tg.png"), 
+  plot = bigram_tg_plot,
+  units = "in", width = 9, height = 9
+)
+
+## save a single plot to a file
+ggsave(
+  here("plots", "bing_sent.png"), 
+  plot = bing_sent_plot,
+  units = "in", width = 9, height = 9
+)
+
+## save a single plot to a file
+ggsave(
+  here("plots", "lda_summ_topics.png"), 
+  plot = lda_summ_topics_plot,
+  units = "in", width = 9, height = 9
+)
+
+## save a single plot to a file
+ggsave(
+  here("plots", "lda_top_terms.png"), 
+  plot = lda_top_terms_plot,
+  units = "in", width = 9, height = 9
+)
+
+## save a single plot to a file
+ggsave(
+  here("plots", "nrc_sent.png"), 
+  plot = nrc_sent_plot,
+  units = "in", width = 9, height = 9
+)
+
+## save a single plot to a file
+ggsave(
+  here("plots", "org_type_topic_word_class_summ.png"), 
+  plot = org_type_topic_word_class_summ_plot,
+  units = "in", width = 9, height = 9
+)
+
+## save a single plot to a file
+ggsave(
+  here("plots", "top_bigram_count.png"), 
+  plot = top_bigram_count_plot,
+  units = "in", width = 9, height = 9
+)
+
+## save a single plot to a file
+ggsave(
+  here("plots", "word_cors_tg.png"), 
+  plot = word_cors_tg_plot,
+  units = "in", width = 9, height = 9
+)
+
+## save a single plot to a file
+ggsave(
+  here("plots", "word_pairs_tg.png"), 
+  plot = word_pairs_tg_plot,
+  units = "in", width = 9, height = 9
+)
+```
+
+## Task 12: Conceptual Questions
+
+For your last task, you will respond to conceptual questions based on the conceptual lectures for this week.
+
+**Question 12.1**: What does it mean to *tokenize* text? Provide examples.
+
+**Response 12.1**: *Tokenizing text is essentially splitting text into smaller units such as indvidual words. These indivudal words are called tokens. For example, "I have a pet dog." and "I have a pet dog and a pet cat" Tokenzing the sentence would be splitting each word up in each the sentences.You can then run analysis and see that the word "dog" has a frequency of 2.*.
+
+**Question 12.2**: How is *sentiment analysis* performed?
+
+**Response 12.2**: *Sentiment analysis classifies text by either positive, negative or neutral sentiment.  You preform a sentiment analysis by joing tokens with a sentiment dictionary.*.
+
+**Question 12.3**: How does *latent Dirichlet allocation* of tokens work? 
+
+**Response 12.3**: *LDA is topic modeling that spots relationships between words in a group. First the number of words in the document are determined, Next, a topic mixture for the document is fixed over a set of chosen topics. Next, a topic is selected. Lastly, a word is picked based on the topics multinomial distribution. *.
